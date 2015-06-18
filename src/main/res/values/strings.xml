@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">AudioRecord</string>
+    <string name="btnStart">btnStart</string>
+    <string name="btnStop">btnStop</string>
+    <string name="MediaRecord">MediaRecord</string>
+    <string name="AudioRecord">AudioRecord</string>
+</resources>
