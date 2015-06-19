@@ -15,14 +15,23 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.bmob.BTPFileResponse;
+import com.bmob.BmobProFile;
+import com.bmob.btp.callback.UploadListener;
+import com.bmob.utils.BmobLog;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.logging.LogRecord;
+
+import cn.bmob.v3.Bmob;
 
 /**
  * Created by yjh on 2015/6/15.
@@ -33,6 +42,9 @@ public class MainActivity extends Activity {
     private static final int RECORDER_AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT;
     private static final int UPDATE_AUDIORECORD_TEXT = 1;
     private static final int UPDATE_AUDIORECORD_TEXT2 = 2;
+    private static final int UPLOAD_BEGIN = 3;
+    private static final int UPLOAD_ING = 4;
+    private static final int UPLOAD_END = 5;
     private static String mFileName = null;
     int bufferSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE,
             RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING);
@@ -45,6 +57,7 @@ public class MainActivity extends Activity {
     private TextView textView2;
     private ScrollView scrollView;
     private ScrollView scrollView2;
+    private ProgressBar progressBar;
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -66,6 +79,14 @@ public class MainActivity extends Activity {
                             scrollView2.fullScroll(ScrollView.FOCUS_DOWN);
                         }
                     });
+                    break;
+                case UPLOAD_ING:
+                    progressBar.setVisibility(View.VISIBLE);
+                    progressBar.setProgress((Integer) msg.obj);
+                    break;
+                case UPLOAD_END:
+                    progressBar.setVisibility(View.GONE);
+                    showToast("Upload successfully");
                     break;
             }
         }
@@ -91,6 +112,8 @@ public class MainActivity extends Activity {
             } else if (i == R.id.btnStop) {
                 enableButtons(false);
                 stopRecording();
+            } else if (i == R.id.upload) {
+                upload(Environment.getExternalStorageDirectory() + "/audiorecordByAudioRecord16bitmono.pcm");
             }
         }
     };
@@ -100,13 +123,15 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.main);
+        // 初始化 Bmob SDK
+        Bmob.initialize(this, "94e36ad9769577ceb1bf3d9dc2e9c396");
         textView = (TextView) findViewById(R.id.AudioRecord);
         textView2 = (TextView) findViewById(R.id.MediaRecord);
         scrollView = (ScrollView) findViewById(R.id.AudioRecordScrollView);
         scrollView2 = (ScrollView) findViewById(R.id.MediaRecordScrollView);
+        progressBar = (ProgressBar) findViewById(R.id.progressBar);
         setButtonHandlers();
         enableButtons(false);
-
     }
 
     private void setButtonHandlers() {
@@ -114,6 +139,7 @@ public class MainActivity extends Activity {
         (findViewById(R.id.btnStart1)).setOnClickListener(btnClick);
         (findViewById(R.id.btnStart2)).setOnClickListener(btnClick);
         (findViewById(R.id.btnStop)).setOnClickListener(btnClick);
+        (findViewById(R.id.upload)).setOnClickListener(btnClick);
     }
 
     private void enableButtons(boolean isRecording) {
@@ -261,5 +287,42 @@ public class MainActivity extends Activity {
         }
         return super.onKeyDown(keyCode, event);
     }
+
+    //bmob
+    private void upload(String filePath) {
+        BmobProFile.getInstance(MainActivity.this).upload(filePath, new UploadListener() {
+            Message message = Message.obtain();
+
+            @Override
+            public void onSuccess(String fileName, String url) {
+                message = message.obtain();
+                message.what = UPLOAD_END;
+                handler.sendMessage(message);
+            }
+
+            @Override
+            public void onProgress(int ratio) {
+                // TODO Auto-generated method stub
+                message = message.obtain();
+                message.what = UPLOAD_ING;
+                message.obj = ratio;
+                handler.sendMessage(message);
+                Log.i("MainActivity", " -onProgress :" + ratio);
+            }
+
+            @Override
+            public void onError(int statuscode, String errormsg) {
+                message = message.obtain();
+                message.what = UPLOAD_END;
+                handler.sendMessage(message);
+                //  showToast("上传出错：" + errormsg);
+            }
+        });
+    }
+
+    private void showToast(String mess) {
+        Toast.makeText(this, mess, Toast.LENGTH_LONG).show();
+    }
+
 }
 

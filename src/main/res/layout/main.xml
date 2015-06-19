@@ -1,40 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     tools:context=".MainActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <Button
-            android:id="@+id/btnStart"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="start" />
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btnStart1"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="startA" />
+            <Button
+                android:id="@+id/btnStart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="start" />
 
-        <Button
-            android:id="@+id/btnStart2"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="startB" />
+            <Button
+                android:id="@+id/btnStart1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="startA" />
 
-        <Button
-            android:id="@+id/btnStop"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="stop" />
-    </LinearLayout>
+            <Button
+                android:id="@+id/btnStart2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="startB" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="stop" />
+
+            <Button
+                android:id="@+id/upload"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="upload" />
+        </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -78,3 +89,14 @@
         </ScrollView>
     </LinearLayout>
 </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="@style/Base.Widget.AppCompat.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:max="100"
+        android:scrollbarSize="@dimen/abc_action_bar_stacked_tab_max_width"
+        android:visibility="gone" />
+</RelativeLayout>

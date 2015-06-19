@@ -23,4 +23,5 @@ android {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     compile 'com.android.support:appcompat-v7:22.0.0'
+    compile files('libs/BmobSDK_V3.4.0_0616.jar')
 }
