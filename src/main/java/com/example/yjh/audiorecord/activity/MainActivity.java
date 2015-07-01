@@ -32,6 +32,7 @@ import com.bmob.BmobProFile;
 import com.bmob.btp.callback.UploadListener;
 import com.example.yjh.audiorecord.R;
 import com.example.yjh.audiorecord.service.MyIntentService;
+import com.example.yjh.audiorecord.service.MyService;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -118,7 +119,7 @@ public class MainActivity extends Activity {
                 //   startRecordingByAudioRecord();
                 enableButtons(true);
             } else if (i == R.id.btnStart2) {
-                startRecordingByMediaRecord();
+                //   startRecordingByMediaRecord();
                 enableButtons(true);
             } else if (i == R.id.btnStop) {
                 enableButtons(false);
@@ -135,7 +136,7 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.main);
         // 初始化 Bmob SDK
-        startService(new Intent(this, MyIntentService.class));
+        startService(new Intent(this, MyService.class));
     /*    Bmob.initialize(this, "94e36ad9769577ceb1bf3d9dc2e9c396");
         textView = (TextView) findViewById(R.id.AudioRecord);
         textView2 = (TextView) findViewById(R.id.MediaRecord);
@@ -144,6 +145,23 @@ public class MainActivity extends Activity {
         progressBar = (ProgressBar) findViewById(R.id.progressBar);
         setButtonHandlers();
         enableButtons(false);*/
+
+
+      /* Callback interface you can use when instantiating a Handler to avoid having to implement your own subclass of Handler.
+        返回true代表有Callback去handle,那么Handler本身的那个handleMessage就不会被调用了*/
+        Handler handler = new Handler(new Handler.Callback() {
+            @Override
+            public boolean handleMessage(Message msg) {
+                return false; //default false
+            }
+        }) {
+            @Override
+            public void handleMessage(Message msg) {
+                super.handleMessage(msg);
+            }
+        };
+        Message m1 = handler.obtainMessage(); //获得的Message包含target Handle的sendMessage(Message msg)
+        Message m2 = Message.obtain();  //不包含target 所以Message的sendToTarget() 前需要设置target
     }
 
     private void setButtonHandlers() {
@@ -165,29 +183,6 @@ public class MainActivity extends Activity {
         (findViewById(id)).setEnabled(isEnable);
     }
 
-
-
-    private void startRecordingByMediaRecord() {
-        mRecorder = new MediaRecorder();
-        mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        mFileName = Environment.getExternalStorageDirectory().getAbsolutePath();
-        mFileName += "/audiorecordByMediaRecord.3gp";
-        mRecorder.setOutputFile(mFileName);
-        mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-        try {
-            mRecorder.prepare();
-        } catch (IOException e) {
-            Log.e("MainActivity", "prepare() failed");
-        }
-        mRecorder.start();
-        recordingThread2 = new Thread(new Runnable() {
-            public void run() {
-                updateMicStatus();
-            }
-        }, "MediaRecorder Thread");
-        recordingThread2.start();
-    }
 
     //convert short to byte
 /*    private byte[] short2byte(short[] sData) {

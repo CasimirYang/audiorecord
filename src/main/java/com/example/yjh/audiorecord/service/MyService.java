@@ -1,9 +1,8 @@
 package com.example.yjh.audiorecord.service;
 
-import android.app.IntentService;
-import android.content.ContextWrapper;
+import android.app.Notification;
+import android.app.Service;
 import android.content.Intent;
-import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
@@ -16,15 +15,14 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.IBinder;
+import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
-import android.view.View;
-import android.widget.ProgressBar;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.bmob.BmobProFile;
@@ -35,23 +33,17 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.Timer;
 
 import cn.bmob.v3.Bmob;
 
-/**
- * An {@link IntentService} subclass for handling asynchronous task requests in
- * a service on a separate handler thread.
- * <p/>
- * TODO: Customize class - update intent actions, extra parameters and static
- * helper methods.
- */
-public class MyIntentService extends IntentService {
+public class MyService extends Service {
     private static final String directory = Environment.getExternalStorageDirectory() + "/audiorecord/";
+
     private static final String fileNameA = "audiorecordByAudioRecord16bitmonoA.pcm";
     private static final String fileNameB = "audiorecordByAudioRecord16bitmonoB.pcm";
     private static final int RECORDER_SAMPLERATE = 44100;
@@ -61,17 +53,23 @@ public class MyIntentService extends IntentService {
     private static final int UPLOAD_ING = 4;
     private static final int UPLOAD_END = 5;
     private static final int UPLOAD_ERROR = 6;
+    private static final int CAN_UPLOAD = 7;
+    private static boolean threadFlag = false;
     private static String mFileName = null;
+    private static int maxFileSize = 1024 * 120;
     int bufferSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE,
             RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING);
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder mBuilder;
+    Handler uploadHandler;
     private AudioRecord recorder = null;
     private MediaRecorder mRecorder = null;
     private Thread recordingThread = null;
     private Thread recordingThread2 = null;
     private String type = null;
     private Boolean isRecording = false;
+    //private static int maxFileSize = 1048576*12; //12M, 2 hours
+    private String currentFile = null;
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -86,65 +84,89 @@ public class MyIntentService extends IntentService {
                 case UPLOAD_ING:
                     //    progressBar.setVisibility(View.VISIBLE);
                     //     progressBar.setProgress((Integer) msg.obj);
-                    showNotification((Integer) msg.obj);
+                    //  showNotification((Integer) msg.obj);
                     break;
                 case UPLOAD_ERROR:
-                    Log.i("MyIntentService", "UPLOAD_ERROR:" + String.valueOf(msg.obj));
+                    Log.i("MyService", "UPLOAD_ERROR:" + String.valueOf(msg.obj));
                     showToast(String.valueOf(msg.arg1));
                     break;
+                case UPLOAD_END:
+                    Log.i("MyService", "UPLOAD_END:" + String.valueOf(msg.obj));
+                    //   updateUploadSituation(String.valueOf(msg.obj));
             }
         }
     };
     private android.media.MediaRecorder.OnInfoListener infoListener = new MediaRecorder.OnInfoListener() {
         @Override
         public void onInfo(MediaRecorder mr, int what, int extra) {
-            Log.i("MyIntentService", " -11111i1nfoListener111111111 :" + Thread.currentThread().getId());
+            Log.i("MyService", " -11111i1nfoListener111111111 :" + Thread.currentThread().getId());
             switch (what) {
                 case MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED:
-                    Log.i("MyIntentService", " -infoListener :" + Thread.currentThread().getId());
-                    startRecordingByMediaRecord();
+                    Log.i("MyService", " -infoListener :" + Thread.currentThread().getId());
+                    startRecordingByMediaRecord(false);
                     break;
                 case MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED:
-                    Log.i("MyIntentService", " -infoListener :" + Thread.currentThread().getId());
-                    startRecordingByMediaRecord();
+                    Log.i("MyService", " -infoListener :" + Thread.currentThread().getId());
+                    uploadHandler.sendEmptyMessage(CAN_UPLOAD);
+                    startRecordingByMediaRecord(false);
                     break;
             }
         }
     };
 
-    public MyIntentService() {
-        super("MyIntentService");
+    public MyService() {
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        // TODO: Return the communication channel to the service.
+        throw new UnsupportedOperationException("Not yet implemented");
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Bmob.initialize(this, "94e36ad9769577ceb1bf3d9dc2e9c396");
+        Bmob.initialize(this, "bcea8d4327d6fcaa3ecbd0153b5efaa5");
         initmkdir();
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyIntentService.this);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
         type = sharedPreferences.getString("type", "media");
-        Set<String> set = sharedPreferences.getStringSet("uploadSet", null);
-        if (set == null) {
+        Set<String> set = new LinkedHashSet();
+        sharedPreferences.edit().putStringSet("uploadSet", set).commit();
+     /*   Set<String> set = sharedPreferences.getStringSet("uploadSet", null);
+        if( set == null ){
             set = new LinkedHashSet();
             sharedPreferences.edit().putStringSet("uploadSet", set).commit();
-        }
-    }
+        }*/
 
-    @Override
-    protected void onHandleIntent(Intent intent) {
-       /* Handler  subThreadHandle = new Handler(){
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this).setSmallIcon(R.drawable.notification).setContentTitle("My notification").setContentText("Hello World!");
+        Notification notification = builder.build();
+        startForeground(11, notification);
+        Log.i("MyService", "onCreate:" + String.valueOf(Thread.currentThread().getId()));
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                if ("audio".equalsIgnoreCase(type)) {
+                    startRecordingByAudioRecord();
+                } else {
+                    Log.i("MyService", "startRecordingByMediaRecord:" + String.valueOf(Thread.currentThread().getId()));
+                    startRecordingByMediaRecord(true);
+                }
+            }
+        }).start();
+
+        HandlerThread uploadThread = new HandlerThread("uploadThread");
+        uploadThread.start();
+        uploadHandler = new Handler(uploadThread.getLooper()) {
             @Override
             public void handleMessage(Message msg) {
-                super.handleMessage(msg);
+                switch (msg.what) {
+                    case CAN_UPLOAD:
+                        Log.i("MyService", "doUpload:" + String.valueOf(Thread.currentThread().getId()));
+                        doUpload();
+                }
             }
-        };*/
-        if (intent != null) {
-            if ("audio".equalsIgnoreCase(type)) {
-                startRecordingByAudioRecord();
-            } else {
-                startRecordingByMediaRecord();
-            }
-        }
+        };
     }
 
     private void initmkdir() {
@@ -165,7 +187,7 @@ public class MyIntentService extends IntentService {
         byte[] sData = new byte[bufferSize];
         FileOutputStream os = null;
         int fileSize = 1024 << 10;
-        Log.i("MyIntentService", "fileSize:" + String.valueOf(fileSize));
+        Log.i("MyService", "fileSize:" + String.valueOf(fileSize));
         try {
             File file = new File(directory, getmFileNameFromCache());
             os = new FileOutputStream(file);
@@ -192,9 +214,9 @@ public class MyIntentService extends IntentService {
             int bufferReaderResult = recorder.read(sData, 0, bufferSize);
             try {
                 // // writes the data to file from buffer
-                //    Log.i("MyIntentService", "bufferReaderResult:" + String.valueOf(bufferReaderResult));
+                //    Log.i("MyService", "bufferReaderResult:" + String.valueOf(bufferReaderResult));
                 if (!isRecording) {
-                    Log.i("MyIntentService", "break!");
+                    Log.i("MyService", "break!");
                     break;
                 }
                 sizeFlag += bufferReaderResult;
@@ -211,24 +233,24 @@ public class MyIntentService extends IntentService {
     }
 
     private String getmFileNameFromCache() {
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyIntentService.this);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
         return sharedPreferences.getString("filename", fileNameA);
     }
 
     private FileOutputStream getFileOutputStreamChange() {
         FileOutputStream os = null;
         File file;
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyIntentService.this);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
         if (fileNameA.equalsIgnoreCase(getmFileNameFromCache())) {
             file = new File(Environment.getExternalStorageDirectory() + "/audiorecord", fileNameB);
             sharedPreferences.edit().putString("filename", fileNameB).commit();
-            Log.i("MyIntentService", "file change to B---------------------");
+            Log.i("MyService", "file change to B---------------------");
         } else {
             file = new File(Environment.getExternalStorageDirectory() + "/audiorecord", fileNameA);
             sharedPreferences.edit().putString("filename", fileNameA).commit();
-            Log.i("MyIntentService", "file change to A----------------------");
+            Log.i("MyService", "file change to A----------------------");
         }
-        Log.i("MyIntentService", "file " + String.valueOf(sharedPreferences.getString("filename", null)));
+        Log.i("MyService", "file " + String.valueOf(sharedPreferences.getString("filename", null)));
         try {
             os = new FileOutputStream(file);
         } catch (FileNotFoundException e) {
@@ -237,16 +259,30 @@ public class MyIntentService extends IntentService {
         return os;
     }
 
+    private void doUpload() {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
+        Set<String> set = sharedPreferences.getStringSet("uploadSet", null);
+        for (String file : set) {
+            if (file.equalsIgnoreCase(currentFile)) {
+                continue;
+            }
+            upload(file);
+        }
+    }
+
     //bmob
     private void upload(String filePath) {
-        BmobProFile.getInstance(MyIntentService.this).upload(filePath, new UploadListener() {
+        BmobProFile.getInstance(MyService.this).upload(filePath, new UploadListener() {
             Message message = Message.obtain();
 
             @Override
             public void onSuccess(String fileName, String url) {
+                updateUploadSituation(fileName);
                 message = message.obtain();
                 message.what = UPLOAD_END;
+                message.obj = fileName;
                 handler.sendMessage(message);
+
             }
 
             @Override
@@ -255,7 +291,7 @@ public class MyIntentService extends IntentService {
                 message.what = UPLOAD_ING;
                 message.obj = ratio;
                 handler.sendMessage(message);
-                Log.i("MyIntentService", " -onProgress :" + ratio);
+                Log.i("MyService", " -onProgress :" + ratio);
             }
 
             @Override
@@ -274,8 +310,8 @@ public class MyIntentService extends IntentService {
             CreateNotification();
         }
         if (progress < 100) {
-            mBuilder.setOnlyAlertOnce(true); //ÈáçÂ§çnotify‰πüÂè™‰ºöË∞ÉÁî®‰∏ÄÊ¨°sound, vibrate and ticker
-            //Â∞ÜsetProgressÁöÑÁ¨¨‰∏â‰∏™ÂèÇÊï∞indeterminate ËÆæ‰∏∫trueÂç≥ÂèØÊòæÁ§∫‰∏∫Êó†ÊòéÁ°ÆËøõÂ∫¶ÁöÑËøõÂ∫¶Êù°Ê†∑Âºè
+            mBuilder.setOnlyAlertOnce(true); //÷ÿ∏¥notify“≤÷ªª·µ˜”√“ª¥Œsound, vibrate and ticker
+            //Ω´setProgressµƒµ⁄»˝∏ˆ≤Œ ˝indeterminate …ËŒ™trueº¥ø…œ‘ æŒ™Œﬁ√˜»∑Ω¯∂»µƒΩ¯∂»Ãı—˘ Ω
             mBuilder.setProgress(100, progress, false);
             notificationManager.notify(1, mBuilder.build());
             //ongoing notification > regular notifications
@@ -284,7 +320,7 @@ public class MyIntentService extends IntentService {
             mBuilder.setOnlyAlertOnce(false)
                     .setTicker("Upload complete.");
             mBuilder.setContentTitle("Upload complete").setProgress(0, 0, false).setOngoing(false);
-            //1.ÊéíÂ∫è default notification > ongoing notification > regular notifications
+            //1.≈≈–Ú default notification > ongoing notification > regular notifications
             //2.Ongoing notifications level do not have an 'X' close button, and are not affected by the "Clear all" button.
             notificationManager.notify(1, mBuilder.build());
         }
@@ -299,17 +335,17 @@ public class MyIntentService extends IntentService {
                 .setNumber(12)
                 .setTicker("Begin to Upload...")
                 .setAutoCancel(true);
-        //         .setSound(Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.fallbackring));//rawÊûÑÂª∫uri
-        //Ëé∑Âèñassets ‰∏ãÁöÑÊñá‰ª∂ÁöÑÊµÅ
+        //         .setSound(Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.fallbackring));//rawππΩ®uri
+        //ªÒ»°assets œ¬µƒŒƒº˛µƒ¡˜
         AssetManager assetManager = getAssets();
-        //      InputStream inputStream = assetManager.open("filename");  //asetÊ≤°ÊúâID Áõ¥Êé•Áî®Êñá‰ª∂ÂêçÔºåÂ¶ÇÊûúÁõ¥Êé•Âú®assets‰∏ãÊ≤°ÊúâË∑ØÂæÑ
-        //Ëé∑Âèñraw ‰∏ãÁöÑËµÑÊ∫ê
+        //      InputStream inputStream = assetManager.open("filename");  //aset√ª”–ID ÷±Ω””√Œƒº˛√˚£¨»Áπ˚÷±Ω”‘⁄assetsœ¬√ª”–¬∑æ∂
+        //ªÒ»°raw œ¬µƒ◊ ‘¥
         Resources res = getResources();
         //  XmlResourceParser getAnimation(int id);
-        // InputStream openRawResource(int id)  //resÁî®ID
+        // InputStream openRawResource(int id)  //res”√ID
         Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        mBuilder.setSound(alarmSound, AudioManager.STREAM_NOTIFICATION);//‰∏≠Èü≥ÈáèÊéßÂà∂ÈîÆÊéßÂà∂ÁöÑÈü≥È¢ëÊµÅ
-        long[] vibrate = {0, 1000, 0, 0}; //Á≠âÂæÖ ÈúáÂä® Á≠âÂæÖ ÈúáÂä®ÔºàÊØ´ÁßíÔºâ
+        mBuilder.setSound(alarmSound, AudioManager.STREAM_NOTIFICATION);//÷–“Ù¡øøÿ÷∆º¸øÿ÷∆µƒ“Ù∆µ¡˜
+        long[] vibrate = {0, 1000, 0, 0}; //µ»¥˝ ’∂Ø µ»¥˝ ’∂Ø£®∫¡√Î£©
         //   mBuilder.setVibrate(vibrate);
         mBuilder.setLights(Color.GREEN, 1000, 1000);
     }
@@ -318,23 +354,27 @@ public class MyIntentService extends IntentService {
         Toast.makeText(this, mess, Toast.LENGTH_LONG).show();
     }
 
-    private void startRecordingByMediaRecord() {
-        Log.i("MyIntentService", " -startRecordingByMediaRecord :" + Thread.currentThread().getId());
-        mRecorder = new MediaRecorder();
+    private void startRecordingByMediaRecord(boolean newFlag) {
+        if (newFlag) {
+            mRecorder = new MediaRecorder();
+        }
+        Log.i("MyService", " -startRecordingByMediaRecord :" + Thread.currentThread().getId());
+        Log.i("MyService", " -mRecorder :" + mRecorder);
+        mRecorder.reset();
         mRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
         mRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
         mRecorder.setOutputFile(getmFileNameByMediaType());
-        Log.i("MyIntentService", " -file :" + getmFileNameByMediaType());
+        Log.i("MyService", " -file :" + getmFileNameByMediaType());
         mRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
         mRecorder.setOnInfoListener(infoListener);
-        mRecorder.setMaxDuration(20000);
+        mRecorder.setMaxFileSize(maxFileSize);
         try {
             mRecorder.prepare();
         } catch (IOException e) {
             Log.e("MainActivity", "prepare() failed");
         }
         mRecorder.start();
-        //   int SPACE = 10000;// Èó¥ÈöîÂèñÊ†∑Êó∂Èó¥
+        //   int SPACE = 10000;// º‰∏Ù»°—˘ ±º‰
         //  subThreadHandle.postDelayed(mUpdateMicStatusTimer, SPACE);
      /*   recordingThread2 = new Thread(new Runnable() {
             public void run() {
@@ -346,7 +386,7 @@ public class MyIntentService extends IntentService {
 
     /* private Runnable mUpdateMicStatusTimer = new Runnable() {
          public void run() {
-             Log.i("MyIntentService", " -startRecordingByMediaRecord mUpdateMicStatusTimer:" + Thread.currentThread().getId());
+             Log.i("MyService", " -startRecordingByMediaRecord mUpdateMicStatusTimer:" + Thread.currentThread().getId());
              mRecorder.stop();
              mRecorder.release();
            *//*  Message message = Message.obtain();
@@ -356,13 +396,22 @@ public class MyIntentService extends IntentService {
         }
     };*/
     private String getmFileNameByMediaType() {
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyIntentService.this);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
         SimpleDateFormat format = new SimpleDateFormat("ddMMyyyy_HHmmss");
         String filename = directory + format.format(new Date()) + ".3gp";
         Set<String> set = sharedPreferences.getStringSet("uploadSet", null);
         set.add(filename);
         sharedPreferences.edit().putStringSet("uploadSet", set).apply();
+        currentFile = filename;
         return filename;
     }
 
+    private void updateUploadSituation(String fileName) {
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyService.this);
+        Set<String> set = sharedPreferences.getStringSet("uploadSet", null);
+        set.remove(fileName);
+        sharedPreferences.edit().putStringSet("uploadSet", set).commit();
+        File file = new File(fileName);
+        file.delete();
+    }
 }
