@@ -56,7 +56,7 @@ public class MyService extends Service {
     private static final int CAN_UPLOAD = 7;
     private static boolean threadFlag = false;
     private static String mFileName = null;
-    private static int maxFileSize = 1024 * 120;
+    private static int maxFileSize = 1024 * 100; //12M, 2 hours
     int bufferSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE,
             RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING);
     NotificationManagerCompat notificationManager;
@@ -68,7 +68,7 @@ public class MyService extends Service {
     private Thread recordingThread2 = null;
     private String type = null;
     private Boolean isRecording = false;
-    //private static int maxFileSize = 1048576*12; //12M, 2 hours
+    //  private static int maxFileSize = 1048576*12; //12M, 2 hours
     private String currentFile = null;
     private Handler handler = new Handler() {
         @Override
@@ -271,13 +271,13 @@ public class MyService extends Service {
     }
 
     //bmob
-    private void upload(String filePath) {
+    private void upload(final String filePath) {
         BmobProFile.getInstance(MyService.this).upload(filePath, new UploadListener() {
             Message message = Message.obtain();
 
             @Override
             public void onSuccess(String fileName, String url) {
-                updateUploadSituation(fileName);
+                updateUploadSituation(filePath);
                 message = message.obtain();
                 message.what = UPLOAD_END;
                 message.obj = fileName;

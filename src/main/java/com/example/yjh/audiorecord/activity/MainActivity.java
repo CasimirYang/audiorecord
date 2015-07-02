@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.main);
         // 初始化 Bmob SDK
-        startService(new Intent(this, MyService.class));
+        //  startService(new Intent(this, MyService.class));
     /*    Bmob.initialize(this, "94e36ad9769577ceb1bf3d9dc2e9c396");
         textView = (TextView) findViewById(R.id.AudioRecord);
         textView2 = (TextView) findViewById(R.id.MediaRecord);
